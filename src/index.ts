@@ -276,6 +276,122 @@ server.tool(
   })
 );
 
+server.tool(
+  'mayotte_list_communes',
+  'List Mayotte communes from geo.api.gouv.fr with INSEE code, postal codes, population, and center geometry.',
+  {},
+  async () => {
+    try {
+      const url = 'https://geo.api.gouv.fr/departements/976/communes?fields=nom,code,codesPostaux,population,centre&format=json';
+      const communes = await fetchJson<Array<Record<string, unknown>>>(url);
+      return jsonResult({
+        source: url,
+        count: communes.length,
+        communes: communes.map((commune) => ({
+          name: commune.nom,
+          code: commune.code,
+          postal_codes: commune.codesPostaux,
+          population: commune.population,
+          center: commune.centre,
+        })),
+      });
+    } catch (error) {
+      return errorResult(error instanceof Error ? error.message : 'Failed to list Mayotte communes');
+    }
+  }
+);
+
+server.tool(
+  'mayotte_find_commune',
+  'Find a Mayotte commune by name, INSEE code, or postal code using geo.api.gouv.fr.',
+  {
+    query: z.string().describe('Commune name, INSEE code, or postal code, e.g. "Mamoudzou", "97611", "97600".'),
+  },
+  async ({ query }) => {
+    try {
+      const url = 'https://geo.api.gouv.fr/departements/976/communes?fields=nom,code,codesPostaux,population,centre&format=json';
+      const communes = await fetchJson<Array<Record<string, unknown>>>(url);
+      const normalized = query.toLowerCase();
+      return jsonResult({
+        query,
+        matches: communes
+          .filter((commune) => {
+            const name = String(commune.nom ?? '').toLowerCase();
+            const code = String(commune.code ?? '').toLowerCase();
+            const postcodes = Array.isArray(commune.codesPostaux) ? commune.codesPostaux.map(String) : [];
+            return name.includes(normalized) || code === normalized || postcodes.includes(query);
+          })
+          .map((commune) => ({
+            name: commune.nom,
+            code: commune.code,
+            postal_codes: commune.codesPostaux,
+            population: commune.population,
+            center: commune.centre,
+          })),
+      });
+    } catch (error) {
+      return errorResult(error instanceof Error ? error.message : 'Failed to find Mayotte commune');
+    }
+  }
+);
+
+server.tool(
+  'mayotte_search_datasets',
+  'Search data.gouv.fr for Mayotte-specific datasets, optionally adding a topic.',
+  {
+    topic: z.string().optional().describe('Optional topic, e.g. "écoles", "santé", "risques", "population".'),
+    page_size: z.number().int().min(1).max(50).default(10).describe('Number of datasets to return.'),
+  },
+  async ({ topic, page_size }) => {
+    try {
+      const query = topic ? `Mayotte ${topic}` : 'Mayotte';
+      const url = new URL('https://www.data.gouv.fr/api/1/datasets/');
+      url.searchParams.set('q', query);
+      url.searchParams.set('page_size', String(page_size));
+      const data = await fetchJson<{ data?: Array<Record<string, unknown>>; total?: number }>(url.toString());
+      return jsonResult({
+        query,
+        total: data.total,
+        datasets: (data.data ?? []).map((dataset) => ({
+          id: dataset.id,
+          slug: dataset.slug,
+          title: dataset.title,
+          page: dataset.page,
+          organization: dataset.organization && typeof dataset.organization === 'object'
+            ? (dataset.organization as Record<string, unknown>).name
+            : undefined,
+        })),
+      });
+    } catch (error) {
+      return errorResult(error instanceof Error ? error.message : 'Failed to search Mayotte datasets');
+    }
+  }
+);
+
+server.tool(
+  'mayotte_get_vigilance',
+  'Return official Mayotte Météo-France vigilance URL and a short public page excerpt.',
+  {
+    include_excerpt: z.boolean().default(true).describe('Whether to fetch a short text excerpt from the public vigilance page.'),
+  },
+  async ({ include_excerpt }) => {
+    const source = 'https://vigilance.meteofrance.fr/fr/mayotte';
+    try {
+      if (!include_excerpt) {
+        return jsonResult({ source });
+      }
+      const html = await fetchText(source);
+      return jsonResult({
+        source,
+        excerpt: htmlToText(html).slice(0, 1600),
+        note: 'Use the official source URL for authoritative current vigilance. This MCP does not replace prefecture or Météo-France instructions.',
+      });
+    } catch (error) {
+      return errorResult(error instanceof Error ? error.message : 'Failed to fetch Mayotte vigilance');
+    }
+  }
+);
+
 async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
   console.error(`${CONFIG.name} running on stdio`);

@@ -14,6 +14,10 @@ Mayotte-focused public-data discovery: communes, vigilance, risks, population, a
 - `mayotte_fetch_source_excerpt`
 - `mayotte_explain_scope`
 - `mayotte_list_reference_items`
+- `mayotte_list_communes`
+- `mayotte_find_commune`
+- `mayotte_search_datasets`
+- `mayotte_get_vigilance`
 
 ## Install
 
