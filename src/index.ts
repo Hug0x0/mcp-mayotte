@@ -336,6 +336,40 @@ server.tool(
 );
 
 server.tool(
+  'mayotte_get_commune_risks',
+  'Fetch official Géorisques radon and seismic zoning information for a Mayotte commune INSEE code.',
+  {
+    code_insee: z.string().regex(/^976\d{2}$/).describe('Mayotte commune INSEE code, e.g. 97611 for Mamoudzou.'),
+  },
+  async ({ code_insee }) => {
+    try {
+      const communeUrl = `https://geo.api.gouv.fr/communes/${code_insee}?fields=nom,code,codesPostaux,population,centre&format=json`;
+      const radonUrl = `https://www.georisques.gouv.fr/api/v1/radon?code_insee=${code_insee}`;
+      const seismicUrl = `https://www.georisques.gouv.fr/api/v1/zonage_sismique?code_insee=${code_insee}`;
+      const [commune, radon, seismic] = await Promise.all([
+        fetchJson<Record<string, unknown>>(communeUrl),
+        fetchJson<Record<string, unknown>>(radonUrl),
+        fetchJson<Record<string, unknown>>(seismicUrl),
+      ]);
+      return jsonResult({
+        code_insee,
+        commune,
+        sources: {
+          commune: communeUrl,
+          radon: radonUrl,
+          seismic_zoning: seismicUrl,
+        },
+        radon,
+        seismic_zoning: seismic,
+        disclaimer: 'This is public source discovery, not a legal risk certificate or emergency instruction.',
+      });
+    } catch (error) {
+      return errorResult(error instanceof Error ? error.message : 'Failed to fetch Mayotte commune risks');
+    }
+  }
+);
+
+server.tool(
   'mayotte_search_datasets',
   'Search data.gouv.fr for Mayotte-specific datasets, optionally adding a topic.',
   {
